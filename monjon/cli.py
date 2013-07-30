@@ -107,9 +107,9 @@ class CLI:
         Help for 'listen'"""
 
         if protocol.lower() == "tcp":
-            l = monjon.proxy.TCPListener()
+            l = monjon.proxy.TCPListener(localPort, remoteHost, remotePort)
         elif protocol.lower() == "udp":
-            l = monjon.proxy.UDPListener()
+            l = monjon.proxy.UDPListener(localPort, remoteHost, remotePort)
         else:
             print("Undefined protocol '%s': expecting 'tcp' or 'udp'." % protocol)
             return

@@ -1,10 +1,6 @@
 #! /usr/bin/env python
-#
-#
 
-# tcp proxy
-#
-#
+import socket
 
 
 class Listener:
@@ -13,17 +9,41 @@ class Listener:
 
 class TCPListener(Listener):
 
-    def __init__(self):
-        self._socket = None
+    def __init__(self, localPort, remoteHost, remotePort):
+        # Local port.
+        self.localPort = localPort
 
+        # Create, bind and listen on socket.
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.bind(("0.0.0.0", self.localPort))
+        self.socket.listen(5)
 
-    def get_dispatchers(self):
-        if self._socket:
-            return [self._socket]
-        return []
+        # Get actual local port number (in case 'localPort' was zero).
+        host, port = self.socket.getsockname()
+        self.localPort = port
+
+        # Check that at least one of remote host and port are
+        # specified, since otherwise we try to connect to
+        # localhost:localport.
+        if remotePort == 0 and remoteHost == None:
+            print("Cannot use default remote host and default remote port")
+            self.socket.close()
+            raise AttributeError
+
+        if not remoteHost:
+            self.remoteHost = "localhost"
+        else:
+            self.remoteHost = remoteHost
+
+        if not remotePort:
+            self.remotePort = self.localPort
+        else:
+            self.remotePort = remotePort
+
+        return
 
     def __str__(self):
-        return "TCP Listener"
+        return "TCP:%u -> %s:%u" % (self.localPort, self.remoteHost, self.remotePort)
 
 
 class UDPListener(Listener):
@@ -37,53 +57,3 @@ class UDPListener(Listener):
     forwarded back to the correct originator."""
     pass
 
-    
-class Session:
-
-    def get_dispatchers(self):
-        """Return list of asyncore dispatcher instances to be
-        monitored for this session."""
-        
-        return []
-    
-    pass
-
-
-class TCPSession(Session):
-    pass
-
-
-class UDPSession(Session):
-    pass
-
-
-
-class Protocol:
-
-    def __init__(self, name):
-        self._name = name
-
-    def name(self):
-        return self._name
-
-    def create_listener(self, *args):
-        return None
-
-
-class TCPProtocol(Protocol):
-
-    def create_listener(self, port, interface=None, *args):
-        l = TCPListener()
-        l.set_port(port)
-        if interface:
-            l.set_interface(interface)
-        return l
-
-
-class Proxy:
-
-
-    def add_listener(self, listener):
-        return
-
-    
