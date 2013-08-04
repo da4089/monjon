@@ -1,9 +1,30 @@
-#! /usr/bin/env python
+# -*- python -*-
+########################################################################
+#HEADER_BEGIN
+# Copyright 2013, David Arnold.
+#
+# This file is part of Monjon.
+#
+# Monjon is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Monjon is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Monjon.  If not, see <http://www.gnu.org/licenses/>.
+#HEADER_END
+########################################################################
 
 import socket
+import monjon.core
 
 
-class Listener:
+class Listener(monjon.core.EventSource):
     """Listens for connection attempts, and creates a Session for them."""
     pass
 
@@ -42,8 +63,77 @@ class TCPListener(Listener):
 
         return
 
+    def GetSockets(self):
+        """Get the sockets for this listener."""
+        return [self.socket]
+    
+    def OnReadable(self, socket):
+        """Callback when socket is readable."""
+
+        assert socket == self.socket
+
+        # accept
+        s = self.socket.accept()
+
+        # create TCP session obj
+        session = TCPSession(sock, {})
+    
+        # run breakpoints (accept, new?)
+        
+        return
+
     def __str__(self):
         return "TCP:%u -> %s:%u" % (self.localPort, self.remoteHost, self.remotePort)
+
+
+class TCPSession(monjon.core.EventSource):
+    """ """
+
+    def __init__(self, socket, bps):
+        self._client = socket
+
+        # Not yet connected to server
+        self._server = None
+
+        # Initialise breakpoint lists
+        self._bps = {}
+        self._bps.update(bps)
+
+        # Run the connect breakpoint(s), if any
+
+        
+        return
+
+    def ConnectToServer(self, host, port):
+        return
+
+    def SendToClient(self, buf):
+        return
+
+    def SendToServer(self, buf):
+        return
+
+    def ReceiveFromClient(self, length):
+        return
+
+    def ReceiveFromServer(self, length):
+        return
+
+    def Close(self):
+        return
+
+    def GetSockets(self):
+        # FIXME
+        return []
+
+    def OnReadable(self):
+        return
+
+    def OnWritable(self):
+        return
+
+
+
 
 
 class UDPListener(Listener):
