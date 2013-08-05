@@ -151,10 +151,24 @@ class TCPSession(monjon.core.EventSource):
             buf = self._client.recv(8192)
             if buf:
                 self._server.send(buf)
+            else:
+                # Zero-length read, so client has closed session
+                self._dispatcher.DeregisterSource(self)
+
+                # Close both sockets
+                self._server.close()
+                self._client.close()
         else:
             buf = self._server.recv(8192)
             if buf:
                 self._client.send(buf)
+            else:
+                # Zero-length read, so server has closed session
+                self._dispatcher.DeregisterSource(self)
+
+                # Close both sockets
+                self._client.close()
+                self._server.close()
         return
 
     def OnWritable(self, sock):

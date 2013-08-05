@@ -131,8 +131,9 @@ class Dispatcher:
     def DeregisterSource(self, source):
         """Remove a source from the dispatcher."""
 
-        for s in source.Sockets():
+        for s in source.GetSockets():
             if s in self._sources.keys():
+                print("Removing %s from sources" % str(s))
                 del self._sources[s]
         return
 
@@ -168,12 +169,14 @@ class Dispatcher:
                 r, w, x = select.select(l, l, [], 0)
 
                 for sock in r:
-                    source = self._sources[sock]
-                    source.OnReadable(sock)
+                    source = self._sources.get(sock)
+                    if source:
+                        source.OnReadable(sock)
 
                 for sock in w:
-                    source = self._sources[sock]
-                    source.OnWritable(sock)
+                    source = self._sources.get(sock)
+                    if source:
+                        source.OnWritable(sock)
 
         except KeyboardInterrupt:
             # We got a C-c during select: just return to the command
