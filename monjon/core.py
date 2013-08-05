@@ -151,8 +151,8 @@ class Dispatcher:
         """Gather and process events until breakpoint or C-c"""
 
         try:
-            while True:
-                Step()
+            while self.Step():
+                pass
         except KeyboardInterrupt:
             pass
 
@@ -166,18 +166,24 @@ class Dispatcher:
                 #FIXME: this should be plugged in from cli/gui/robot/etc
                 l = self._sources.keys()
                 r, w, x = select.select(l, l, [], 0)
-                
-                pass
+
+                for sock in r:
+                    source = self._sources[sock]
+                    source.OnReadable(sock)
+
+                for sock in w:
+                    source = self._sources[sock]
+                    source.OnWritable(sock)
 
         except KeyboardInterrupt:
             # We got a C-c during select: just return to the command
             # prompt, and we'll get the events next time
-            return
+            return False
 
         # Process first waiting event
         event = self._queue.pop(0)
         event.Dispatch()
-        return
+        return True
 
 
 class Breakpoint:

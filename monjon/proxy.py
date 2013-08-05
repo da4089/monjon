@@ -30,7 +30,9 @@ class Listener(monjon.core.EventSource):
 
 class TCPListener(Listener):
 
-    def __init__(self, localPort, remoteHost, remotePort):
+    def __init__(self, dispatcher, localPort, remoteHost, remotePort):
+        self.dispatcher = dispatcher
+
         # Local port.
         self.localPort = localPort
 
@@ -61,26 +63,34 @@ class TCPListener(Listener):
         else:
             self.remotePort = remotePort
 
+        self._sessions = []
         return
 
     def GetSockets(self):
         """Get the sockets for this listener."""
         return [self.socket]
     
-    def OnReadable(self, socket):
+    def OnReadable(self, sock):
         """Callback when socket is readable."""
 
-        assert socket == self.socket
+        assert sock == self.socket
+        print("OnReadable")
 
         # accept
-        s = self.socket.accept()
+        s, a = self.socket.accept()
 
         # create TCP session obj
-        session = TCPSession(sock, {})
-    
+        session = TCPSession(self.dispatcher, s, self.remoteHost, self.remotePort, {})
+        self._sessions.append(session)
+
         # run breakpoints (accept, new?)
         
         return
+
+    def OnWritable(self, sock):
+        print("OnWritable")
+        return
+
 
     def __str__(self):
         return "TCP:%u -> %s:%u" % (self.localPort, self.remoteHost, self.remotePort)
@@ -89,19 +99,28 @@ class TCPListener(Listener):
 class TCPSession(monjon.core.EventSource):
     """ """
 
-    def __init__(self, socket, bps):
-        self._client = socket
+    def __init__(self, dispatcher, sock, remoteHost, remotePort, bps):
+        self._dispatcher = dispatcher
+        self._client = sock
+        self._remoteHost = remoteHost
+        self._remotePort = remotePort
 
-        # Not yet connected to server
+        # Not yet connected to server.
         self._server = None
 
-        # Initialise breakpoint lists
+        # Initialise breakpoint lists.
         self._bps = {}
         self._bps.update(bps)
 
         # Run the connect breakpoint(s), if any
 
-        
+        # Connect to remote target.
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print("Connecting to:  %s:%s" % (self._remoteHost, self._remotePort))
+        self._server.connect((self._remoteHost, self._remotePort))
+
+        # Add to event loop.
+        self._dispatcher.RegisterSource(self)
         return
 
     def ConnectToServer(self, host, port):
@@ -123,13 +142,23 @@ class TCPSession(monjon.core.EventSource):
         return
 
     def GetSockets(self):
-        # FIXME
-        return []
+        return [self._client, self._server]
 
-    def OnReadable(self):
+    def OnReadable(self, sock):
+        print("TCPSession::OnReadable()")
+
+        if sock == self._client:
+            buf = self._client.recv(8192)
+            if buf:
+                self._server.send(buf)
+        else:
+            buf = self._server.recv(8192)
+            if buf:
+                self._client.send(buf)
         return
 
-    def OnWritable(self):
+    def OnWritable(self, sock):
+        print("TCPSession::OnWritable()")
         return
 
 

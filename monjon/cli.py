@@ -20,7 +20,7 @@
 #HEADER_END
 ########################################################################
 
-import os, readline, select, sys, time, types
+import os, readline, select, sys, time, traceback, types
 import monjon.proxy
 import monjon.core
 
@@ -108,7 +108,8 @@ class CLI:
                 break
 
             except:
-                print(sys.exc_info())
+                print(traceback.format_exc())
+                #print(sys.exc_info())
             
         return
 
@@ -208,9 +209,11 @@ class CLI:
 
         # Create the listener
         if protocol.lower() == "tcp":
-            l = monjon.proxy.TCPListener(localPort, remoteHost, remotePort)
+            l = monjon.proxy.TCPListener(self.dispatcher,
+                                         localPort, remoteHost, remotePort)
         elif protocol.lower() == "udp":
-            l = monjon.proxy.UDPListener(localPort, remoteHost, remotePort)
+            l = monjon.proxy.UDPListener(self.dispatcher,
+                                         localPort, remoteHost, remotePort)
         else:
             print("Undefined protocol '%s': expecting 'tcp' or 'udp'." % protocol)
             return
@@ -221,7 +224,7 @@ class CLI:
         self.nextListener += 1
 
         # Hook it into the event loop
-        self.dispatcher.Register(l)
+        self.dispatcher.RegisterSource(l)
         return
 
 
