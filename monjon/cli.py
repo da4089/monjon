@@ -253,6 +253,7 @@ class CLI:
         """Licence text goes here."""
         print(self.licence.__doc__)
 
+    # Other constants
         
 ########################################################################
 # FIXME vim magic

@@ -63,13 +63,18 @@ class TCPListener(Listener):
         else:
             self.remotePort = remotePort
 
+        # List of sessions accepted from the listener
         self._sessions = []
         return
 
     def GetSockets(self):
         """Get the sockets for this listener."""
         return [self.socket]
-    
+
+    def GetSessions(self):
+        """Get the active sessions for this listener."""
+        return self._sessions
+
     def OnReadable(self, sock):
         """Callback when socket is readable."""
 
@@ -80,7 +85,11 @@ class TCPListener(Listener):
         s, a = self.socket.accept()
 
         # create TCP session obj
-        session = TCPSession(self.dispatcher, s, self.remoteHost, self.remotePort, {})
+        session = TCPSession(self.dispatcher,
+                             s,
+                             self.remoteHost,
+                             self.remotePort,
+                             {})
         self._sessions.append(session)
 
         # run breakpoints (accept, new?)
@@ -92,8 +101,10 @@ class TCPListener(Listener):
         return
 
 
-    def __str__(self):
-        return "TCP:%u -> %s:%u" % (self.localPort, self.remoteHost, self.remotePort)
+    def __repr__(self):
+        return "<TCP Listener: %u -> %s:%u" % (self.localPort,
+                                               self.remoteHost,
+                                               self.remotePort)
 
 
 class TCPSession(monjon.core.EventSource):
@@ -104,6 +115,8 @@ class TCPSession(monjon.core.EventSource):
         self._client = sock
         self._remoteHost = remoteHost
         self._remotePort = remotePort
+
+        self._sourceHost, self._sourcePort = self._client.getpeername()
 
         # Not yet connected to server.
         self._server = None
@@ -126,19 +139,24 @@ class TCPSession(monjon.core.EventSource):
     def ConnectToServer(self, host, port):
         return
 
-    def SendToClient(self, buf):
+    def SendToClient(self, event):
+        self._client.send(event.GetBuffer())
         return
 
-    def SendToServer(self, buf):
+    def SendToServer(self, event):
+        self._server.send(event.GetBuffer())
         return
 
-    def ReceiveFromClient(self, length):
-        return
+    def Close(self, event):
+        # Remove from event loop
+        self._dispatcher.DeregisterSource(self)
 
-    def ReceiveFromServer(self, length):
-        return
-
-    def Close(self):
+        # Close both sockets
+        self._client.close()
+        self._client = None
+        
+        self._server.close()
+        self._server = None
         return
 
     def GetSockets(self):
@@ -150,33 +168,37 @@ class TCPSession(monjon.core.EventSource):
         if sock == self._client:
             buf = self._client.recv(8192)
             if buf:
-                self._server.send(buf)
+                e = monjon.core.Event(self, "client_recv")
+                e.SetBuffer(buf)
+                e.SetAction(self.SendToServer)
             else:
                 # Zero-length read, so client has closed session
-                self._dispatcher.DeregisterSource(self)
-
-                # Close both sockets
-                self._server.close()
-                self._client.close()
+                e = monjon.core.Event(self, "close")
+                e.SetAction(self.Close)
         else:
             buf = self._server.recv(8192)
             if buf:
-                self._client.send(buf)
+                e = monjon.core.Event(self, "server_recv")
+                e.SetBuffer(buf)
+                e.SetAction(self.SendToClient)
             else:
                 # Zero-length read, so server has closed session
-                self._dispatcher.DeregisterSource(self)
+                e = monjon.core.Event(self, "close")
+                e.SetAction(self.Close)
 
-                # Close both sockets
-                self._client.close()
-                self._server.close()
+        # Queue event for dispatch
+        self._dispatcher.QueueEvent(e)
         return
 
     def OnWritable(self, sock):
-        print("TCPSession::OnWritable()")
+        #print("TCPSession::OnWritable()")
         return
 
-
-
+    def __repr__(self):
+        return "<TCP Session: %s:%hu -> %s:%hu>" % (self._sourceHost,
+                                                    self._sourcePort,
+                                                    self._remoteHost,
+                                                    self._remotePort)
 
 
 class UDPListener(Listener):

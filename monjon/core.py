@@ -23,13 +23,29 @@
 import select, socket
 
 
+class Breakpoint:
+    def __init__(self, source, event, condition):
+        self._source = source
+        self._event = event
+        self._condition = condition
+        return
+
+
+class Watchpoint:
+    def __init__(self):
+        self._source = None
+        self._property = None
+        self._condition = None
+        return
+
+
 class Listener:
     """Callback interface for dispatcher clients."""
 
-    def OnBreak(self, breakpoint, context):
+    def OnBreak(self, breakpoint, event):
         return
 
-    def OnWatch(self, watchpoint, value, context):
+    def OnWatch(self, watchpoint, value, event):
         return
 
 
@@ -90,18 +106,60 @@ class Event:
     if single-stepping, control returns to the user after processing
     each Event."""
 
-    def __init__(self):
-        self._source = None
-        self._event = None
+    def __init__(self, source, eventType=None):
+        """Create an event.
+
+        'source' is the initiating event source.
+        'eventType' is the name of an event type."""
+
+        self._source = source
+        self._type = eventType
+        self._buffer = None
+        self._action = None
         return
 
-    def Dispatch(self):
-        """Continue execution."""
-        pass
+    def GetSource(self):
+        """Return the source for this event."""
+        return self._source
 
-    def Match(self, breakpoint):
-        """Returns True if breakpoint matches this event."""
-        pass
+    def SetType(self, eventType):
+        """Set the type of this event.
+
+        'eventType' is the name of an event type."""
+        self._type = eventType
+        return
+
+    def GetType(self):
+        """Return the type of this event."""
+        return self._type
+
+    def SetBuffer(self, buffer):
+        """Set a buffer associated with this event.
+
+        'buffer' a string buffer."""
+        self._buffer = buffer
+        return
+
+    def GetBuffer(self):
+        """Get the buffer associated with this event."""
+        return self._buffer
+
+    def SetAction(self, action):
+        """Set the action to be performed for this event.
+
+        'action' callable to be executed."""
+        self._action = action
+        return
+
+    def GetAction(self):
+        """Return the action for this event."""
+        return self._action
+
+    def PerformAction(self):
+        """Perform the action for this event."""
+        self._action(self)
+        return
+
 
 
 class Dispatcher:
@@ -114,8 +172,17 @@ class Dispatcher:
     """
 
     def __init__(self):
+        # Queue of events to be processed
         self._queue = []
+
+        # Table of {socket: source}
         self._sources = {}
+
+        # Table of {source: {event_type: breakpoint}}
+        self._breakpoints = {}
+
+        # Watchpoint
+        self._watchpoints = {}
         return
 
     def RegisterSource(self, source):
@@ -138,6 +205,11 @@ class Dispatcher:
         return
 
     def SetBreakpoint(self, source, event, condition):
+
+        if source not in self._breakpoints.keys():
+            self._breakpoints[source] = {}
+
+        self._breakpoints[source][event] = Breakpoint(source, event, condition)
         return
 
     def SetWatchpoint(self, source, condition, value):
@@ -185,21 +257,28 @@ class Dispatcher:
 
         # Process first waiting event
         event = self._queue.pop(0)
-        event.Dispatch()
+        self.Dispatch(event)
         return True
 
+    def Dispatch(self, event):
+        # Check for breakpoints
+        source = event.GetSource()
+        eventType = event.GetType()
+        
+        if source in self._breakpoints.keys():
+            if eventType in self._breakpoints[source].keys():
+                if True: # FIXME: evaluate conditional
+                    self.Break(self._breakpoints[source][eventType], event)
 
-class Breakpoint:
-    def __init__(self):
-        self._source = None
-        self._event = None
-        self._condition = None
+        event.PerformAction()
         return
 
+    def Break(self, breakpoint, event):
+        # Run watchpoints
+        for wp in self._watchpoints:
+            self._listener.OnWatch(wp, event)
 
-class Watchpoint:
-    def __init__(self):
-        self._source = None
-        self._property = None
-        self._condition = None
+        # Run breakpoint
+        self._listener.OnBreak(breakpoint, event)
         return
+        
