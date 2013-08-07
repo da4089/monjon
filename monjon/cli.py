@@ -35,6 +35,9 @@ more details, type 'help(licence)'
 Type 'help()' for general assistance with usage."""
 
 
+# Event constants
+accept = "accept"
+
 class CLI:
 
     def __init__(self):
@@ -58,6 +61,7 @@ class CLI:
         self.globals["intro"] = self.intro
         self.globals["licence"] = self.licence
         self.globals["license"] = self.licence
+        self.globals["accept"] = accept
 
         self.globals.update(self.functions)
 
@@ -72,9 +76,8 @@ class CLI:
 
         # Debugger core
         self.dispatcher = monjon.core.Dispatcher()
+        self.dispatcher.SetListener(self)
         return
-
-
 
     def main(self):
 
@@ -88,11 +91,15 @@ class CLI:
         readline.set_completer(self.complete)
         readline.parse_and_bind("tab: complete")
 
+        # Run main loop.
+        self.loop()
+        return
+
+    def loop(self):
         # Main loop.
         while True:
             try:
                 x = input("(monjon) ")
-
             except EOFError:
                 print("Use exit() to exit monjon.")
                 continue
@@ -109,7 +116,6 @@ class CLI:
 
             except:
                 print(traceback.format_exc())
-                #print(sys.exc_info())
             
         return
 
@@ -128,6 +134,14 @@ class CLI:
             return matches[state]
 
 
+    def OnBreak(self, breakpoint, event):
+        print("BREAK")
+        self.dispatcher.Stop()
+
+    def OnWatch(self, watchpoint, value, event):
+        print("Callback for watchpoint")
+
+
     ####################################################################
     # Commands
     
@@ -144,8 +158,24 @@ class CLI:
         to True, execution will break.  Otherwise, execution will
         continue.  The default condition is 'True'."""
 
-        pass
+        if len(args) < 2:
+            raise TypeError("breakpoint() missing required arguments")
         
+        if isinstance(args[0], monjon.proxy.Listener):
+            # Listener
+            # FIXME: should this be in monjon.core, not monjon.proxy?
+            self.dispatcher.SetBreakpoint(args[0], args[1], True)
+
+        elif isinstance(args[0], monjon.core.EventSource):
+            # Session of some sort
+            self.dispatcher.SetBreakpoint(args[0], args[1], True)
+
+        else:
+            print("Can't handle generic breakpoints yet")
+
+        return
+
+
     def exit(self):
         """Exit the debugger."""
 
@@ -253,7 +283,6 @@ class CLI:
         """Licence text goes here."""
         print(self.licence.__doc__)
 
-    # Other constants
-        
+    
 ########################################################################
 # FIXME vim magic

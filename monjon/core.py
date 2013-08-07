@@ -55,31 +55,6 @@ class EventSource:
         self._state = None
         return
 
-    def SetBreakpoint(self, event, condition, context):
-        """Set a breakpoint on this source.
-
-        Each source maintains a set of breakpoints.  When an event is
-        dispatched, the breakpoint conditionals for its source are
-        evaluated.  If a match occurs, the listener is invoked."""
-        return
-
-    def SetWatchpoint(self, condition, value, context):
-        """Set a watchpoint on this source.
-
-        A watchpoint reports the value of a property of the source to
-        its listener when its condition is met.  What properties are
-        available depends on the type of event source.
-
-        A watchpoint is evaluated for each event, but (unlike a
-        breakpoint) does not interrupt execution."""
-        return
-
-    def SetListener(self, listener, context):
-        """Set the listener for this source.
-
-        The listener must implement the Listener interface."""
-        return
-
     def GetSockets(self):
         return []
 
@@ -133,17 +108,6 @@ class Event:
         """Return the type of this event."""
         return self._type
 
-    def SetBuffer(self, buffer):
-        """Set a buffer associated with this event.
-
-        'buffer' a string buffer."""
-        self._buffer = buffer
-        return
-
-    def GetBuffer(self):
-        """Get the buffer associated with this event."""
-        return self._buffer
-
     def SetAction(self, action):
         """Set the action to be performed for this event.
 
@@ -159,6 +123,17 @@ class Event:
         """Perform the action for this event."""
         self._action(self)
         return
+
+    def SetContext(self, context):
+        """Set a context associated with this event.
+
+        'context' a string buffer."""
+        self._context = context
+        return
+
+    def GetContext(self):
+        """Get the Context associated with this event."""
+        return self._context
 
 
 
@@ -183,6 +158,12 @@ class Dispatcher:
 
         # Watchpoint
         self._watchpoints = {}
+
+        # Listener
+        self._listener = None
+
+        # Loop control.
+        self._run = False
         return
 
     def RegisterSource(self, source):
@@ -204,6 +185,7 @@ class Dispatcher:
                 del self._sources[s]
         return
 
+
     def SetBreakpoint(self, source, event, condition):
 
         if source not in self._breakpoints.keys():
@@ -215,6 +197,13 @@ class Dispatcher:
     def SetWatchpoint(self, source, condition, value):
         return
 
+    def SetListener(self, listener):
+        """Set the listener for this source.
+
+        The listener must implement the Listener interface."""
+        self._listener = listener
+        return
+
     def QueueEvent(self, event):
         """Queue an event for processing."""
         self._queue.append(event)
@@ -223,19 +212,25 @@ class Dispatcher:
     def Run(self):
         """Gather and process events until breakpoint or C-c"""
 
+        self._run = True
+        
         try:
-            while self.Step():
+            while self._run and self.Step():
                 pass
         except KeyboardInterrupt:
             pass
 
         return
 
+    def Stop(self):
+        self._run = False
+        return
+
     def Step(self):
         """Process one event, first gathering more if required."""
 
         try:
-            while len(self._queue) < 1:
+            while self._run and len(self._queue) < 1:
                 #FIXME: this should be plugged in from cli/gui/robot/etc
                 l = self._sources.keys()
                 r, w, x = select.select(l, l, [], 0)
@@ -253,6 +248,10 @@ class Dispatcher:
         except KeyboardInterrupt:
             # We got a C-c during select: just return to the command
             # prompt, and we'll get the events next time
+            return False
+
+        # Check loop control
+        if not self._run:
             return False
 
         # Process first waiting event
