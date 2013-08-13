@@ -38,6 +38,7 @@ class TCPListener(Listener):
 
         # Create, bind and listen on socket.
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(("0.0.0.0", self.localPort))
         self.socket.listen(5)
 
@@ -117,9 +118,9 @@ class TCPListener(Listener):
         return
 
     def __repr__(self):
-        return "<TCP Listener: %u -> %s:%u" % (self.localPort,
-                                               self.remoteHost,
-                                               self.remotePort)
+        return "<TCP Listener: %u -> %s:%u>" % (self.localPort,
+                                                self.remoteHost,
+                                                self.remotePort)
 
 
 class TCPSession(monjon.core.EventSource):
@@ -149,11 +150,15 @@ class TCPSession(monjon.core.EventSource):
         return
 
     def SendToClient(self, event):
-        self._client.send(event.GetContext())
+        buf = event.GetContext()
+        self._client.send(buf)
+        print("S->C %u bytes" % len(buf))
         return
 
     def SendToServer(self, event):
-        self._server.send(event.GetContext())
+        buf = event.GetContext()
+        self._server.send(buf)
+        print("C->S %u bytes" % len(buf))
         return
 
     def Close(self, event):
@@ -166,18 +171,18 @@ class TCPSession(monjon.core.EventSource):
         
         self._server.close()
         self._server = None
+
+        print("closed")
         return
 
     def GetSockets(self):
         return [self._client, self._server]
 
     def OnReadable(self, sock):
-        print("TCPSession::OnReadable()")
-
         if sock == self._client:
             buf = self._client.recv(8192)
             if buf:
-                e = monjon.core.Event(self, "client_recv")
+                e = monjon.core.Event(self, "server_recv")
                 e.SetContext(buf)
                 e.SetAction(self.SendToServer)
             else:
@@ -187,7 +192,7 @@ class TCPSession(monjon.core.EventSource):
         else:
             buf = self._server.recv(8192)
             if buf:
-                e = monjon.core.Event(self, "server_recv")
+                e = monjon.core.Event(self, "client_recv")
                 e.SetContext(buf)
                 e.SetAction(self.SendToClient)
             else:

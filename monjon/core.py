@@ -24,14 +24,58 @@ import select, socket
 
 
 class Breakpoint:
-    def __init__(self, source, event, condition):
+    """Help for breakpoint.
+
+    Clear()
+        Deletes this breakpoint.
+
+    GetName()
+        Returns the index number in the global breakpoints table for
+        this breakpoint.
+        
+    GetSource()
+        Returns the event source for which this breakpoint is defined.
+
+    GetEvent()
+        Returns the name of the event that can trigger this breakpoint.
+
+    GetCondition()
+        Returns the conditional expresssion that must evaluate to True
+        for this breakpoint to break the flow of execution.  The
+        default condition is 'True' (which will always break).
+    """
+
+    def __init__(self, dispatcher, index, source, event, condition):
+        self._dispatcher = dispatcher
+        self._name = index
         self._source = source
         self._event = event
         self._condition = condition
         return
 
+    def GetName(self):
+        """Returns the index number for this breakpoint."""
+        return self._name
+
+    def GetSource(self):
+        """Return the source for this breakpoint."""
+        return self._source
+
+    def GetEvent(self):
+        """Return the event for this breakpoint."""
+        return self._event
+
+    def GetCondition(self):
+        """Return the condition for this breakpoint."""
+        return self._condition
+
+    def Clear(self):
+        """Clear this breakpoint."""
+        return self._dispatcher.ClearBreakpoint(self)
+
 
 class Watchpoint:
+    """Help for watchpoint."""
     def __init__(self):
         self._source = None
         self._property = None
@@ -48,10 +92,18 @@ class Listener:
     def OnWatch(self, watchpoint, value, event):
         return
 
+    def OnSetBreakpoint(self, breakpoint):
+        return
+
+    def OnClearBreakpoint(self, breakpoint):
+        return
+
 
 class EventSource:
+    """Help for EventSource."""
 
     def __init__(self):
+        self._name = None
         self._state = None
         return
 
@@ -69,6 +121,14 @@ class EventSource:
 
     def SetState(self, state):
         self._state = state
+        return
+
+    def GetName(self):
+        return self._name
+
+    def SetName(self, name):
+        self._name = name
+        return
 
 
 class Event:
@@ -91,6 +151,16 @@ class Event:
         self._type = eventType
         self._buffer = None
         self._action = None
+        self._context = None
+        return
+
+    def GetDescription(self):
+        """Get a description of this event, suitable for printing."""
+
+        # FIXME: replace with class hierarchy
+        if self._type == "accept":
+            # context is new socket
+            return ""
         return
 
     def GetSource(self):
@@ -150,11 +220,23 @@ class Dispatcher:
         # Queue of events to be processed
         self._queue = []
 
-        # Table of {socket: source}
+        # Source identifiers
+        self._nextSource = 0
+
+        # Table of {id: source}
         self._sources = {}
+
+        # Table of {socket: source}
+        self._sourceSockets = {}
+
+        # Breakpoint identifiers
+        self._nextBreakpoint = 0
 
         # Table of {source: {event_type: breakpoint}}
         self._breakpoints = {}
+
+        # Table of {id: breakpoint}
+        self._breakpointIds = {}
 
         # Watchpoint
         self._watchpoints = {}
@@ -172,27 +254,65 @@ class Dispatcher:
         Once registered, events occuring on the source will be
         dispatched by the dispatcher."""
 
+        # Allocate identifier and update source.
+        self._sources[self._nextSource] = source
+        source.SetName(self._nextSource)
+        self._nextSource += 1
+
+        # Associate its sockets with the source.
         for s in source.GetSockets():
-            self._sources[s] = source
+            self._sourceSockets[s] = source
         return
 
     def DeregisterSource(self, source):
         """Remove a source from the dispatcher."""
 
+        # Remove sockets from table.
         for s in source.GetSockets():
-            if s in self._sources.keys():
-                print("Removing %s from sources" % str(s))
-                del self._sources[s]
+            if s in self._sourceSockets.keys():
+                del self._sourceSockets[s]
+
+        # Remove from sources table.
+        name = source.GetName()
+        del self._sources[name]
         return
 
+    def GetSources(self):
+        """Return a reference to the sources table."""
+
+        # FIXME: make read-only
+        return self._sources
 
     def SetBreakpoint(self, source, event, condition):
+        """Set a breakpoint for an event on a source matching a condition."""
 
         if source not in self._breakpoints.keys():
             self._breakpoints[source] = {}
 
-        self._breakpoints[source][event] = Breakpoint(source, event, condition)
+        bp = Breakpoint(self, self._nextBreakpoint, source, event, condition)
+        self._breakpoints[source][event] = bp
+        self._breakpointIds[self._nextBreakpoint] = bp
+        self._nextBreakpoint += 1
+
+        if self._listener:
+            self._listener.OnSetBreakpoint(bp)
         return
+
+    def ClearBreakpoint(self, breakpoint):
+        """Remove a breakpoint from the dispatcher."""
+
+        if self._listener:
+            self._listener.OnClearBreakpoint(breakpoint)
+
+        del self._breakpointIds[breakpoint.GetName()]
+        del self._breakpoints[breakpoint.GetSource()][breakpoint.GetEvent()]
+        return
+
+    def GetBreakpoints(self):
+        """Return a reference to the breakpoints table."""
+
+        # FIXME: make read-only
+        return self._breakpointIds
 
     def SetWatchpoint(self, source, condition, value):
         return
@@ -230,28 +350,24 @@ class Dispatcher:
         """Process one event, first gathering more if required."""
 
         try:
-            while self._run and len(self._queue) < 1:
+            while len(self._queue) < 1:
                 #FIXME: this should be plugged in from cli/gui/robot/etc
-                l = self._sources.keys()
+                l = self._sourceSockets.keys()
                 r, w, x = select.select(l, l, [], 0)
 
                 for sock in r:
-                    source = self._sources.get(sock)
+                    source = self._sourceSockets.get(sock)
                     if source:
                         source.OnReadable(sock)
 
                 for sock in w:
-                    source = self._sources.get(sock)
+                    source = self._sourceSockets.get(sock)
                     if source:
                         source.OnWritable(sock)
 
         except KeyboardInterrupt:
             # We got a C-c during select: just return to the command
             # prompt, and we'll get the events next time
-            return False
-
-        # Check loop control
-        if not self._run:
             return False
 
         # Process first waiting event

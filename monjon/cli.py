@@ -37,6 +37,14 @@ Type 'help()' for general assistance with usage."""
 
 # Event constants
 accept = "accept"
+client_recv = "client_recv"
+server_recv = "server_recv"
+close = "close"
+
+# Protocol constants
+tcp = "tcp"
+udp = "udp"
+
 
 class CLI:
 
@@ -61,14 +69,15 @@ class CLI:
         self.globals["intro"] = self.intro
         self.globals["licence"] = self.licence
         self.globals["license"] = self.licence
+
         self.globals["accept"] = accept
+        self.globals["client_recv"] = client_recv
+        self.globals["server_recv"] = server_recv
+        self.globals["close"] = close
+        self.globals["tcp"] = tcp
+        self.globals["udp"] = udp
 
         self.globals.update(self.functions)
-
-        # Table of listeners, which is installed in the global namespace.
-        self.listeners = {}
-        self.globals["l"] = self.listeners
-        self.nextListener = 1
 
         # Configuration and history directories.
         self.confdir = os.path.expanduser("~/.monjon")
@@ -77,6 +86,13 @@ class CLI:
         # Debugger core
         self.dispatcher = monjon.core.Dispatcher()
         self.dispatcher.SetListener(self)
+
+        # Install table of event sources in namespace.
+        self.globals["s"] = self.dispatcher.GetSources()
+
+        # Install table of breakpoints in namespace.
+        self.globals["b"] = self.dispatcher.GetBreakpoints()
+
         return
 
     def main(self):
@@ -136,7 +152,25 @@ class CLI:
 
     def OnBreak(self, breakpoint, event):
         print("BREAK")
+        self.globals["e"] = event
         self.dispatcher.Stop()
+        return
+
+    def OnSetBreakpoint(self, breakpoint):
+        if breakpoint.GetCondition().strip() == 'True':
+            cond = "always"
+        else:
+            cond = "if %s" % breakpoint.GetCondition()
+
+        print("b[%u] => %s on s[%u] %s" % (breakpoint.GetName(),
+                                           breakpoint.GetEvent(),
+                                           breakpoint.GetSource().GetName(),
+                                           cond))
+        return
+
+    def OnClearBreakpoint(self, breakpoint):
+        print("b[%u] cleared" % breakpoint.GetName())
+        return
 
     def OnWatch(self, watchpoint, value, event):
         print("Callback for watchpoint")
@@ -144,15 +178,18 @@ class CLI:
 
     ####################################################################
     # Commands
-    
+
     def breakpoint(self, *args):
         """Break execution.
 
-        breakpoint(listener, event[, condition])
-        breakpoint(socket, event[, condition])
+        breakpoint(source, event[, condition])
         breakpoint(event[, condition])
 
-        Events are: all, none, accept, read, write, shutdown, reset.
+        Break the flow of execution when the specified event occurs
+        for the specified source, and condition evaluates true.
+
+        Supported event names are: all, none, accept, server_recv,
+        client_recv, close.
 
         Condition is a Python conditional expression.  If it evaluates
         to True, execution will break.  Otherwise, execution will
@@ -164,11 +201,11 @@ class CLI:
         if isinstance(args[0], monjon.proxy.Listener):
             # Listener
             # FIXME: should this be in monjon.core, not monjon.proxy?
-            self.dispatcher.SetBreakpoint(args[0], args[1], True)
+            self.dispatcher.SetBreakpoint(args[0], args[1], "True")
 
         elif isinstance(args[0], monjon.core.EventSource):
             # Session of some sort
-            self.dispatcher.SetBreakpoint(args[0], args[1], True)
+            self.dispatcher.SetBreakpoint(args[0], args[1], "True")
 
         else:
             print("Can't handle generic breakpoints yet")
@@ -234,6 +271,22 @@ class CLI:
         same as 'localPort'.
 
         'protocol' TCP or UDP; defaults to TCP.
+
+            Listen for connections on 'localPort', and forward to
+            'remoteHost' on 'remotePort'.  'protocol' defaults to
+            'tcp', but can be overridden by specifying 'udp'.
+
+            The result is an active Listener, which is added to the
+            global sources dictionary: 's'.  For example
+
+            (monjon) listen(1234, "localhost", 5678)
+            s[0] => <TCP Listener: 1234 -> localhost:5678>
+
+            (monjon) print(s[0].GetSessions())
+            []
+
+            (monjon)
+
         
         Help for 'listen'"""
 
@@ -248,18 +301,30 @@ class CLI:
             print("Undefined protocol '%s': expecting 'tcp' or 'udp'." % protocol)
             return
 
-        # Register in the local namespace
-        self.listeners[self.nextListener] = l
-        print("=> l[%u] = %s" % (self.nextListener, l))
-        self.nextListener += 1
-
         # Hook it into the event loop
         self.dispatcher.RegisterSource(l)
+
+        # Print source name.
+        print("s[%u] => %s" % (l.GetName(), l))
+        
         return
 
 
     def run(self):
-        """Execute until breakpoint or C-c."""
+        """Begin processing events continuously, stopping only for
+        breakpoints or if interrupted by the user.
+
+        You can interrupt a running session using Control-C.
+
+        Unlike a program debugger, there's no difference between
+        running and continuing, so use run() to restart execution
+        following a breakpoint as well."""
+
+        # Remove any event reference in the global namespace.
+        # There'll be one if we're running after a breakpoint.
+        if "e" in self.globals.keys():
+            del self.globals["e"]
+
         return self.dispatcher.Run()
 
 
@@ -272,11 +337,37 @@ class CLI:
     # Help methods
 
     def commands(self):
-        """List of built-in functions (commands)."""
+        """List of built-in functions (commands).
+
+        breakpoint([source, ]event[, condition])
+            Break flow of execution for event matching condition from
+            source.
+            
+        exit()
+            Exit monjon.
+
+        history()
+            Show the history of previous commands.
+
+        listen(localPort[, remoteHost[, remotePort[, protocol]]])
+            Listen for connections on 'localPort', and forward to
+            'remoteHost' on 'remotePort'.
+            
+        run()
+            Begin processing events continuously, stopping only for
+            breakpoints or if interrupted by the user.
+
+        step()
+            Process the next queued event, and then return to the
+            prompt.  If no events are queued, wait until one occurs.
+        """
         print(self.commands.__doc__)
         
     def intro(self):
-        """Introduction to monjon."""
+        """Introduction to monjon.
+
+        Enter "help(commands)" for a list of available commands.
+        """
         print(self.intro.__doc__)
 
     def licence(self):
