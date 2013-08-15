@@ -24,26 +24,7 @@ import select, socket
 
 
 class Breakpoint:
-    """Help for breakpoint.
-
-    Clear()
-        Deletes this breakpoint.
-
-    GetName()
-        Returns the index number in the global breakpoints table for
-        this breakpoint.
-        
-    GetSource()
-        Returns the event source for which this breakpoint is defined.
-
-    GetEvent()
-        Returns the name of the event that can trigger this breakpoint.
-
-    GetCondition()
-        Returns the conditional expresssion that must evaluate to True
-        for this breakpoint to break the flow of execution.  The
-        default condition is 'True' (which will always break).
-    """
+    """Base class for breakpoints."""
 
     def __init__(self, dispatcher, index, source, event, condition):
         self._dispatcher = dispatcher
@@ -53,82 +34,107 @@ class Breakpoint:
         self._condition = condition
         return
 
-    def GetName(self):
+    def get_name(self):
         """Returns the index number for this breakpoint."""
         return self._name
 
-    def GetSource(self):
+    def get_source(self):
         """Return the source for this breakpoint."""
         return self._source
 
-    def GetEvent(self):
+    def get_event(self):
         """Return the event for this breakpoint."""
         return self._event
 
-    def GetCondition(self):
+    def get_condition(self):
         """Return the condition for this breakpoint."""
         return self._condition
 
-    def Clear(self):
+    def clear(self):
         """Clear this breakpoint."""
-        return self._dispatcher.ClearBreakpoint(self)
+        return self._dispatcher.clear_breakpoint(self)
+
+    __help__ = """Help for breakpoint.
+
+    clear()
+        Deletes this breakpoint.
+
+    get_name()
+        Returns the index number in the global breakpoints table for
+        this breakpoint.
+        
+    get_source()
+        Returns the event source for which this breakpoint is defined.
+
+    get_event()
+        Returns the name of the event that can trigger this breakpoint.
+
+    get_condition()
+        Returns the conditional expresssion that must evaluate to True
+        for this breakpoint to break the flow of execution.  The
+        default condition is 'True' (which will always break)."""
 
 
 class Watchpoint:
-    """Help for watchpoint."""
+    """Base class for watchpoint."""
+
     def __init__(self):
         self._source = None
         self._property = None
         self._condition = None
         return
 
+    __help__ = """Help for watchpoint."""
+
 
 class Listener:
     """Callback interface for dispatcher clients."""
 
-    def OnBreak(self, breakpoint, event):
+    def on_break(self, breakpoint, event):
         return
 
-    def OnWatch(self, watchpoint, value, event):
+    def on_watch(self, watchpoint, value, event):
         return
 
-    def OnSetBreakpoint(self, breakpoint):
+    def on_set_breakpoint(self, breakpoint):
         return
 
-    def OnClearBreakpoint(self, breakpoint):
+    def on_clear_breakpoint(self, breakpoint):
         return
 
 
 class EventSource:
-    """Help for EventSource."""
+    """Base class for event sources."""
 
     def __init__(self):
         self._name = None
         self._state = None
         return
 
-    def GetSockets(self):
+    def get_sockets(self):
         return []
 
-    def OnReadable(self, socket):
+    def on_readable(self, socket):
         return
 
-    def OnWritable(self, socket):
+    def on_writeable(self, socket):
         return
 
-    def GetState(self):
+    def get_state(self):
         return self._state
 
-    def SetState(self, state):
+    def set_state(self, state):
         self._state = state
         return
 
-    def GetName(self):
+    def get_name(self):
         return self._name
 
-    def SetName(self, name):
+    def set_name(self, name):
         self._name = name
         return
+
+    __help__ = """Help for event source."""
 
 
 class Event:
@@ -154,57 +160,59 @@ class Event:
         self._context = None
         return
 
-    def GetDescription(self):
+    def get_description(self):
         """Get a description of this event, suitable for printing."""
 
         # FIXME: replace with class hierarchy
         if self._type == "accept":
-            # context is new socket
-            return ""
-        return
+            # context is (socket, address) tuple
+            return "connection from %s:%u accepted" % self._context[1]
 
-    def GetSource(self):
+        return "event"
+
+    def get_source(self):
         """Return the source for this event."""
         return self._source
 
-    def SetType(self, eventType):
+    def set_type(self, eventType):
         """Set the type of this event.
 
         'eventType' is the name of an event type."""
         self._type = eventType
         return
 
-    def GetType(self):
+    def get_type(self):
         """Return the type of this event."""
         return self._type
 
-    def SetAction(self, action):
+    def set_action(self, action):
         """Set the action to be performed for this event.
 
         'action' callable to be executed."""
         self._action = action
         return
 
-    def GetAction(self):
+    def get_action(self):
         """Return the action for this event."""
         return self._action
 
-    def PerformAction(self):
+    def perform_action(self):
         """Perform the action for this event."""
         self._action(self)
         return
 
-    def SetContext(self, context):
+    def set_context(self, context):
         """Set a context associated with this event.
 
         'context' a string buffer."""
         self._context = context
         return
 
-    def GetContext(self):
+    def get_context(self):
         """Get the Context associated with this event."""
         return self._context
 
+    __help__ = "Help for events."""
 
 
 class Dispatcher:
@@ -248,7 +256,7 @@ class Dispatcher:
         self._run = False
         return
 
-    def RegisterSource(self, source):
+    def register_source(self, source):
         """Register an event source with with the dispatcher.
 
         Once registered, events occuring on the source will be
@@ -256,34 +264,34 @@ class Dispatcher:
 
         # Allocate identifier and update source.
         self._sources[self._nextSource] = source
-        source.SetName(self._nextSource)
+        source.set_name(self._nextSource)
         self._nextSource += 1
 
         # Associate its sockets with the source.
-        for s in source.GetSockets():
+        for s in source.get_sockets():
             self._sourceSockets[s] = source
         return
 
-    def DeregisterSource(self, source):
+    def deregister_source(self, source):
         """Remove a source from the dispatcher."""
 
         # Remove sockets from table.
-        for s in source.GetSockets():
+        for s in source.get_sockets():
             if s in self._sourceSockets.keys():
                 del self._sourceSockets[s]
 
         # Remove from sources table.
-        name = source.GetName()
+        name = source.get_name()
         del self._sources[name]
         return
 
-    def GetSources(self):
+    def get_sources(self):
         """Return a reference to the sources table."""
 
         # FIXME: make read-only
         return self._sources
 
-    def SetBreakpoint(self, source, event, condition):
+    def set_breakpoint(self, source, event, condition):
         """Set a breakpoint for an event on a source matching a condition."""
 
         if source not in self._breakpoints.keys():
@@ -295,58 +303,58 @@ class Dispatcher:
         self._nextBreakpoint += 1
 
         if self._listener:
-            self._listener.OnSetBreakpoint(bp)
+            self._listener.on_set_breakpoint(bp)
         return
 
-    def ClearBreakpoint(self, breakpoint):
+    def clear_breakpoint(self, breakpoint):
         """Remove a breakpoint from the dispatcher."""
 
         if self._listener:
-            self._listener.OnClearBreakpoint(breakpoint)
+            self._listener.on_clear_breakpoint(breakpoint)
 
-        del self._breakpointIds[breakpoint.GetName()]
-        del self._breakpoints[breakpoint.GetSource()][breakpoint.GetEvent()]
+        del self._breakpointIds[breakpoint.get_name()]
+        del self._breakpoints[breakpoint.get_source()][breakpoint.get_event()]
         return
 
-    def GetBreakpoints(self):
+    def get_breakpoints(self):
         """Return a reference to the breakpoints table."""
 
         # FIXME: make read-only
         return self._breakpointIds
 
-    def SetWatchpoint(self, source, condition, value):
+    def set_watchpoint(self, source, condition, value):
         return
 
-    def SetListener(self, listener):
+    def set_listener(self, listener):
         """Set the listener for this source.
 
         The listener must implement the Listener interface."""
         self._listener = listener
         return
 
-    def QueueEvent(self, event):
+    def queue_event(self, event):
         """Queue an event for processing."""
         self._queue.append(event)
         return
 
-    def Run(self):
+    def run(self):
         """Gather and process events until breakpoint or C-c"""
 
         self._run = True
         
         try:
-            while self._run and self.Step():
+            while self._run and self.step():
                 pass
         except KeyboardInterrupt:
             pass
 
         return
 
-    def Stop(self):
+    def stop(self):
         self._run = False
         return
 
-    def Step(self):
+    def step(self):
         """Process one event, first gathering more if required."""
 
         try:
@@ -358,12 +366,12 @@ class Dispatcher:
                 for sock in r:
                     source = self._sourceSockets.get(sock)
                     if source:
-                        source.OnReadable(sock)
+                        source.on_readable(sock)
 
                 for sock in w:
                     source = self._sourceSockets.get(sock)
                     if source:
-                        source.OnWritable(sock)
+                        source.on_writeable(sock)
 
         except KeyboardInterrupt:
             # We got a C-c during select: just return to the command
@@ -372,28 +380,28 @@ class Dispatcher:
 
         # Process first waiting event
         event = self._queue.pop(0)
-        self.Dispatch(event)
+        self.dispatch(event)
         return True
 
-    def Dispatch(self, event):
+    def dispatch(self, event):
         # Check for breakpoints
-        source = event.GetSource()
-        eventType = event.GetType()
+        source = event.get_source()
+        eventType = event.get_type()
         
         if source in self._breakpoints.keys():
             if eventType in self._breakpoints[source].keys():
                 if True: # FIXME: evaluate conditional
-                    self.Break(self._breakpoints[source][eventType], event)
+                    self.do_break(self._breakpoints[source][eventType], event)
 
-        event.PerformAction()
+        event.perform_action()
         return
 
-    def Break(self, breakpoint, event):
+    def do_break(self, breakpoint, event):
         # Run watchpoints
         for wp in self._watchpoints:
-            self._listener.OnWatch(wp, event)
+            self._listener.on_watch(wp, event)
 
         # Run breakpoint
-        self._listener.OnBreak(breakpoint, event)
+        self._listener.on_break(breakpoint, event)
         return
         

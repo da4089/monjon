@@ -46,7 +46,20 @@ tcp = "tcp"
 udp = "udp"
 
 
+class Help:
+    """A simple string wrapper, used to create help objects in the
+    global namespace."""
+
+    def __init__(self, s):
+        self.__help__ = s
+        return
+
+    def __repr__(self):
+        return self.__help__
+
+
 class CLI:
+    """Monjon command-line user interface."""
 
     def __init__(self):
 
@@ -69,11 +82,13 @@ class CLI:
         self.globals["intro"] = self.intro
         self.globals["licence"] = self.licence
         self.globals["license"] = self.licence
-
+        self.globals["variables"] = self.variables
+        # Events
         self.globals["accept"] = accept
         self.globals["client_recv"] = client_recv
         self.globals["server_recv"] = server_recv
         self.globals["close"] = close
+        # Protocols
         self.globals["tcp"] = tcp
         self.globals["udp"] = udp
 
@@ -85,17 +100,18 @@ class CLI:
 
         # Debugger core
         self.dispatcher = monjon.core.Dispatcher()
-        self.dispatcher.SetListener(self)
+        self.dispatcher.set_listener(self)
 
         # Install table of event sources in namespace.
-        self.globals["s"] = self.dispatcher.GetSources()
+        self.globals["s"] = self.dispatcher.get_sources()
 
         # Install table of breakpoints in namespace.
-        self.globals["b"] = self.dispatcher.GetBreakpoints()
+        self.globals["b"] = self.dispatcher.get_breakpoints()
 
         return
 
     def main(self):
+        """Main function, started when process starts."""
 
         # Blurb
         print(BLURB)
@@ -112,29 +128,49 @@ class CLI:
         return
 
     def loop(self):
-        # Main loop.
+        """Main loop."""
+
+        normal = "(monjon) "
+        nested = "     ... "
+        isIndented = False
+        command = ""
+
         while True:
+            # Get next line of input.
             try:
-                x = input("(monjon) ")
+                x = input(nested if isIndented else normal)
             except EOFError:
                 print("Use exit() to exit monjon.")
                 continue
-
             except KeyboardInterrupt:
                 print("Use exit() to exit monjon.")
                 continue
 
-            try:
-                exec(x, self.globals)
+            # Check for continuation lines.
+            if x.strip() == "":
+                isIndented = False
+            elif x[-1] == ":":
+                isIndented = True
+                command += "\n" + x
+                continue
+            elif isIndented:
+                command += "\n" + x
+                continue
+            else:
+                command = x
 
+            # Execute the assembled command string.
+            try:
+                exec(command, self.globals)
             except SystemExit:
                 break
-
             except:
                 print(traceback.format_exc())
-            
-        return
 
+            # Clear the command that was just executed.
+            command = ""
+
+        return
 
     def complete(self, name, state):
         """Perform tab-completion against the command dictionary."""
@@ -150,29 +186,37 @@ class CLI:
             return matches[state]
 
 
-    def OnBreak(self, breakpoint, event):
-        print("BREAK")
+    def on_break(self, breakpoint, event):
+        """Callback from core when breakpoint is hit."""
+
+        print("b[%u]: %s" % (breakpoint.get_name(), event.get_description()))
         self.globals["e"] = event
-        self.dispatcher.Stop()
+        self.dispatcher.stop()
         return
 
-    def OnSetBreakpoint(self, breakpoint):
-        if breakpoint.GetCondition().strip() == 'True':
+    def on_set_breakpoint(self, breakpoint):
+        """Callback from core when new breakpoint is created."""
+
+        if breakpoint.get_condition().strip() == 'True':
             cond = "always"
         else:
-            cond = "if %s" % breakpoint.GetCondition()
+            cond = "if %s" % breakpoint.get_condition()
 
-        print("b[%u] => %s on s[%u] %s" % (breakpoint.GetName(),
-                                           breakpoint.GetEvent(),
-                                           breakpoint.GetSource().GetName(),
+        print("b[%u] => %s on s[%u] %s" % (breakpoint.get_name(),
+                                           breakpoint.get_event(),
+                                           breakpoint.get_source().get_name(),
                                            cond))
         return
 
-    def OnClearBreakpoint(self, breakpoint):
-        print("b[%u] cleared" % breakpoint.GetName())
+    def on_clear_breakpoint(self, breakpoint):
+        """Callback from core when breakpoint is cleared."""
+
+        print("b[%u] cleared" % breakpoint.get_name())
         return
 
-    def OnWatch(self, watchpoint, value, event):
+    def on_watch(self, watchpoint, value, event):
+        """Callback from core when watchpoint is hit."""
+
         print("Callback for watchpoint")
 
 
@@ -180,20 +224,7 @@ class CLI:
     # Commands
 
     def breakpoint(self, *args):
-        """Break execution.
-
-        breakpoint(source, event[, condition])
-        breakpoint(event[, condition])
-
-        Break the flow of execution when the specified event occurs
-        for the specified source, and condition evaluates true.
-
-        Supported event names are: all, none, accept, server_recv,
-        client_recv, close.
-
-        Condition is a Python conditional expression.  If it evaluates
-        to True, execution will break.  Otherwise, execution will
-        continue.  The default condition is 'True'."""
+        """CLI command to set a breakpoint."""
 
         if len(args) < 2:
             raise TypeError("breakpoint() missing required arguments")
@@ -201,20 +232,19 @@ class CLI:
         if isinstance(args[0], monjon.proxy.Listener):
             # Listener
             # FIXME: should this be in monjon.core, not monjon.proxy?
-            self.dispatcher.SetBreakpoint(args[0], args[1], "True")
+            self.dispatcher.set_breakpoint(args[0], args[1], "True")
 
         elif isinstance(args[0], monjon.core.EventSource):
             # Session of some sort
-            self.dispatcher.SetBreakpoint(args[0], args[1], "True")
+            self.dispatcher.set_breakpoint(args[0], args[1], "True")
 
         else:
             print("Can't handle generic breakpoints yet")
 
         return
 
-
     def exit(self):
-        """Exit the debugger."""
+        """CLI command to exit the debugger."""
 
         if os.path.isdir(self.confdir):
             readline.write_history_file(self.histfile)
@@ -223,7 +253,7 @@ class CLI:
 
 
     def help(self, *args):
-        """Online help."""
+        """CLI command to show online help."""
 
         if not args:
             args = ["intro"]
@@ -231,12 +261,12 @@ class CLI:
         for arg in args:
             if isinstance(arg, str):
                 if arg in self.globals:
-                    print(self.globals[arg].__doc__)
+                    print("    %s\n" % self.globals[arg].__help__)
                 else:
                     print("No help available for %s" % arg)
 
-            elif isinstance(arg, (types.FunctionType, types.MethodType)):
-                print(arg.__doc__)
+            elif hasattr(arg, "__help__"):
+                print("    %s\n" % arg.__help__)
 
             else:
                 print("No help available for %s" % arg)
@@ -246,7 +276,7 @@ class CLI:
 
 
     def history(self):
-        """Print history of previously-executed commands."""
+        """CLI command to print history of previously-executed commands."""
 
         n = readline.get_current_history_length()
         for i in range(n):
@@ -260,35 +290,7 @@ class CLI:
                remoteHost=None,
                remotePort=0,
                protocol="tcp"):
-        """Listen for connections and forward to destination.
-
-        Parameters:
-        'localPort' TCP or UDP port number.
-
-        'remoteHost' Destination host name or IP address.
-
-        'remotePort' Destination TCP or UDP port number.  Defaults to
-        same as 'localPort'.
-
-        'protocol' TCP or UDP; defaults to TCP.
-
-            Listen for connections on 'localPort', and forward to
-            'remoteHost' on 'remotePort'.  'protocol' defaults to
-            'tcp', but can be overridden by specifying 'udp'.
-
-            The result is an active Listener, which is added to the
-            global sources dictionary: 's'.  For example
-
-            (monjon) listen(1234, "localhost", 5678)
-            s[0] => <TCP Listener: 1234 -> localhost:5678>
-
-            (monjon) print(s[0].GetSessions())
-            []
-
-            (monjon)
-
-        
-        Help for 'listen'"""
+        """CLI command to create a proxy session."""
 
         # Create the listener
         if protocol.lower() == "tcp":
@@ -302,78 +304,147 @@ class CLI:
             return
 
         # Hook it into the event loop
-        self.dispatcher.RegisterSource(l)
+        self.dispatcher.register_source(l)
 
         # Print source name.
-        print("s[%u] => %s" % (l.GetName(), l))
+        print("s[%u] => %s" % (l.get_name(), l))
         
         return
 
 
     def run(self):
-        """Begin processing events continuously, stopping only for
-        breakpoints or if interrupted by the user.
-
-        You can interrupt a running session using Control-C.
-
-        Unlike a program debugger, there's no difference between
-        running and continuing, so use run() to restart execution
-        following a breakpoint as well."""
+        """CLI command to run until breakpoint or interrupt."""
 
         # Remove any event reference in the global namespace.
         # There'll be one if we're running after a breakpoint.
         if "e" in self.globals.keys():
             del self.globals["e"]
 
-        return self.dispatcher.Run()
+        return self.dispatcher.run()
 
 
     def step(self):
-        """Execute until the next event only."""
-        return self.dispatcher.Step()
+        """CLI command to execute until the next event."""
+        return self.dispatcher.step()
         
 
     ####################################################################
-    # Help methods
+    # Help
 
-    def commands(self):
-        """List of built-in functions (commands).
+    breakpoint.__help__ = '''Break execution.
 
-        breakpoint([source, ]event[, condition])
-            Break flow of execution for event matching condition from
-            source.
+    breakpoint(source, event[, condition])
+    breakpoint(event[, condition])
+
+    Break the flow of execution when the specified event occurs for
+    the specified source, and condition evaluates true.
+
+    Supported event names are: all, none, accept, server_recv,
+    client_recv, close.
+
+    Condition is a Python conditional expression.  If it evaluates to
+    True, execution will break.  Otherwise, execution will continue.
+    The default condition is "True".'''
+
+    commands = Help('''List of built-in functions (commands).
+
+    breakpoint([source, ]event[, condition])
+        Break flow of execution for event matching condition from
+        source.
             
-        exit()
-            Exit monjon.
+    exit()
+        Exit monjon.
 
-        history()
-            Show the history of previous commands.
+    history()
+        Show the history of previous commands.
 
-        listen(localPort[, remoteHost[, remotePort[, protocol]]])
-            Listen for connections on 'localPort', and forward to
-            'remoteHost' on 'remotePort'.
+    listen(localPort[, remoteHost[, remotePort[, protocol]]])
+        Listen for connections on "localPort", and forward to
+        "remoteHost" on "remotePort".
             
-        run()
-            Begin processing events continuously, stopping only for
-            breakpoints or if interrupted by the user.
+    run()
+        Begin processing events continuously, stopping only for
+        breakpoints or if interrupted by the user.
 
-        step()
-            Process the next queued event, and then return to the
-            prompt.  If no events are queued, wait until one occurs.
-        """
-        print(self.commands.__doc__)
-        
-    def intro(self):
-        """Introduction to monjon.
+    step()
+        Process the next queued event, and then return to the prompt.
+        If no events are queued, wait until one occurs.''')
 
-        Enter "help(commands)" for a list of available commands.
-        """
-        print(self.intro.__doc__)
+    exit.__help__ = '''Exit the debugger.
 
-    def licence(self):
-        """Licence text goes here."""
-        print(self.licence.__doc__)
+    This will close all active network connections.'''
 
+    help.__help__ = '''Show online help.
+
+    Help is available for all commands, and debugger-provided objects.'''
+
+    history.__help__ = '''Show history of previous commands.'''
     
+    intro = Help('''Introduction to Monjon.
+
+    Monjon is a debugger for the network communication between
+    programs.  It intercepts network traffic and exposes it to its
+    user, who can examine and alter the data.
+    
+    Enter "help(commands)" for a list of available commands.
+    Enter "help(variables)" for a list of available variables.''')
+
+    licence = Help('''GPLv3 goes here''')
+
+    listen.__help__ = '''Listen for connections and forward to destination.
+
+    Parameters:
+    localPort
+    - TCP or UDP port number.
+    remoteHost
+    - Destination host name or IP address.
+    remotePort
+    - Destination TCP or UDP port number.  Defaults to same
+      as "localPort".
+    protocol
+    - TCP or UDP; defaults to TCP.
+
+    Listen for connections on "localPort", and forward to
+    "remoteHost" on "remotePort".  "protocol" defaults to
+    "tcp", but can be overridden by specifying "udp".
+
+    The result is an active Listener, which is added to the
+    global sources dictionary: "s".  For example
+
+    (monjon) listen(1234, "localhost", 5678)
+    s[0] => <TCP Listener: 1234 -> localhost:5678>
+    (monjon) print(s[0].get_sessions())
+    []
+    (monjon)
+
+    '''
+
+    run.__help__ = '''Begin processing events continuously, stopping
+    only for breakpoints or if interrupted by the user.
+
+    You can interrupt a running session using Control-C.
+
+    Unlike a program debugger, there is no difference between running
+    and continuing, so use run() to restart execution following a
+    breakpoint as well.'''
+
+    step.__help__ = '''Execute until the next event only.'''
+
+    variables = Help("""
+
+    'b' is a dictionary containing active breakpoints.  When a new
+    breakpoint is created, it's added to this dictionary, and its
+    index number printed for future reference.
+
+    'e' is the triggering event for a breakpoint or watchpoint.  This
+    event is made available only until run() or step() is called after
+    a break.
+    
+    's' is a dictionary containing active event sources.  Event sources
+    include configured forwarding ports, and active connected
+    sessions.
+
+    'w' is a dictionary containing active watchpoints.""")
+
 ########################################################################
 # FIXME vim magic

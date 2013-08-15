@@ -68,19 +68,18 @@ class TCPListener(Listener):
         self._sessions = []
         return
 
-    def GetSockets(self):
+    def get_sockets(self):
         """Get the sockets for this listener."""
         return [self.socket]
 
-    def GetSessions(self):
+    def get_sessions(self):
         """Get the active sessions for this listener."""
         return self._sessions
 
-    def OnReadable(self, sock):
+    def on_readable(self, sock):
         """Callback when socket is readable."""
 
         assert sock == self.socket
-        print("OnReadable")
 
         # Accept connection.
         #
@@ -94,14 +93,14 @@ class TCPListener(Listener):
 
         # Create and queue event
         e = monjon.core.Event(self, "accept")
-        e.SetAction(self.DoAccept)
-        e.SetContext(s)
-        self.dispatcher.QueueEvent(e)
+        e.set_action(self.do_accept)
+        e.set_context((s, a))
+        self.dispatcher.queue_event(e)
         return
 
-    def DoAccept(self, event):
+    def do_accept(self, event):
         # Retrieve the newly accept()ed socket
-        s = event.GetContext()
+        s, a = event.get_context()
 
         # Create TCP session object.
         session = TCPSession(self.dispatcher,
@@ -113,8 +112,8 @@ class TCPListener(Listener):
         self._sessions.append(session)
         return
 
-    def OnWritable(self, sock):
-        print("OnWritable")
+    def on_writeable(self, sock):
+        print("on_writeable")
         return
 
     def __repr__(self):
@@ -139,31 +138,31 @@ class TCPSession(monjon.core.EventSource):
 
         # Connect to remote target.
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print("Connecting to:  %s:%s" % (self._remoteHost, self._remotePort))
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server.connect((self._remoteHost, self._remotePort))
 
         # Add to event loop.
-        self._dispatcher.RegisterSource(self)
+        self._dispatcher.register_source(self)
         return
 
-    def ConnectToServer(self, host, port):
+    def connect_to_server(self, host, port):
         return
 
-    def SendToClient(self, event):
-        buf = event.GetContext()
+    def send_to_client(self, event):
+        buf = event.get_context()
         self._client.send(buf)
         print("S->C %u bytes" % len(buf))
         return
 
-    def SendToServer(self, event):
-        buf = event.GetContext()
+    def send_to_server(self, event):
+        buf = event.get_context()
         self._server.send(buf)
         print("C->S %u bytes" % len(buf))
         return
 
-    def Close(self, event):
+    def close(self, event):
         # Remove from event loop
-        self._dispatcher.DeregisterSource(self)
+        self._dispatcher.deregister_source(self)
 
         # Close both sockets
         self._client.close()
@@ -175,37 +174,37 @@ class TCPSession(monjon.core.EventSource):
         print("closed")
         return
 
-    def GetSockets(self):
+    def get_sockets(self):
         return [self._client, self._server]
 
-    def OnReadable(self, sock):
+    def on_readable(self, sock):
         if sock == self._client:
             buf = self._client.recv(8192)
             if buf:
                 e = monjon.core.Event(self, "server_recv")
-                e.SetContext(buf)
-                e.SetAction(self.SendToServer)
+                e.set_context(buf)
+                e.set_action(self.send_to_server)
             else:
                 # Zero-length read, so client has closed session
                 e = monjon.core.Event(self, "close")
-                e.SetAction(self.Close)
+                e.set_action(self.close)
         else:
             buf = self._server.recv(8192)
             if buf:
                 e = monjon.core.Event(self, "client_recv")
-                e.SetContext(buf)
-                e.SetAction(self.SendToClient)
+                e.set_context(buf)
+                e.set_action(self.send_to_client)
             else:
                 # Zero-length read, so server has closed session
                 e = monjon.core.Event(self, "close")
-                e.SetAction(self.Close)
+                e.set_action(self.close)
 
         # Queue event for dispatch
-        self._dispatcher.QueueEvent(e)
+        self._dispatcher.queue_event(e)
         return
 
-    def OnWritable(self, sock):
-        #print("TCPSession::OnWritable()")
+    def on_writeable(self, sock):
+        #print("TCPSession::on_writeable()")
         return
 
     def __repr__(self):
