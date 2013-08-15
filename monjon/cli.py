@@ -70,6 +70,7 @@ class CLI:
         self.functions["help"] = self.help
         self.functions["history"] = self.history
         self.functions["listen"] = self.listen
+        self.functions["load"] = self.load
         self.functions["run"] = self.run
         self.functions["step"] = self.step
 
@@ -285,6 +286,30 @@ class CLI:
         return
 
 
+    def load(self, filename):
+        """CLI command to load a Python file into the global namespace."""
+
+        # Check file exists.
+        if not os.path.isfile(filename):
+            print("Cannot import '%s': not a file." % filename)
+            return
+
+        # Read file.
+        f = open(filename)
+        s = f.read()
+        f.close()
+
+        # Execute the assembled command string.
+        try:
+            exec(s, self.globals)
+        except SystemExit:
+            pass
+        except:
+            print(traceback.format_exc())
+
+        return
+        
+            
     def listen(self,
                localPort=0,
                remoteHost=None,
@@ -419,6 +444,21 @@ class CLI:
 
     '''
 
+    load.__help__ = '''Load a Python file.
+
+      load("/path/to/file.py")
+
+    The Monjon command line uses the Python programming language to
+    allow users to create complex sequences of commands.  In order to
+    use this ability, you need to be able to load Python source code.
+    
+    This function loads the specified Python file into the global
+    namespace.  Classes and functions defined in this file will then
+    be available to use from the command line.
+
+    Any commands in the file outside of function or class definitions
+    are executed during the loading process.'''
+    
     run.__help__ = '''Begin processing events continuously, stopping
     only for breakpoints or if interrupted by the user.
 
