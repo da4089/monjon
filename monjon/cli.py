@@ -35,16 +35,7 @@ more details, type 'help(licence)'
 Type 'help()' for general assistance with usage."""
 
 
-# Event constants
-accept = "accept"
-client_recv = "client_recv"
-server_recv = "server_recv"
-close = "close"
-
-# Protocol constants
-tcp = "tcp"
-udp = "udp"
-
+########################################################################
 
 class Help:
     """A simple string wrapper, used to create help objects in the
@@ -57,6 +48,46 @@ class Help:
     def __repr__(self):
         return self.__help__
 
+
+########################################################################
+
+class Constant:
+    def __init__(self, s, h):
+        self.s = s
+        self.__help__ = h
+        return
+
+    def __eq__(self, other):
+        return str(other) == self.s
+
+    def __ne__(self, other):
+        return str(other) != self.s
+
+    def __hash__(self):
+        return hash(self.s)
+
+    def __repr__(self):
+        return self.s
+
+
+# Event constants
+accept = Constant("accept",
+                  "Event triggered when a connection is received on "
+                  "a listening socket.")
+client_recv = Constant("client_recv",
+                       "Event triggered when a packet is received from "
+                       "the initiator of a connection.")
+server_recv = Constant("server_recv",
+                       "Event triggered when a packet is received from "
+                       "the listener of a connection.")
+close = Constant("close", "Event triggered when a connection is closed.")
+
+# Protocol constants
+tcp = Constant("tcp", "Protocol type for listen() command.")
+udp = Constant("udp", "Protocol type for listen() command.")
+
+
+########################################################################
 
 class CLI:
     """Monjon command-line user interface."""
@@ -397,11 +428,16 @@ class CLI:
 
     exit.__help__ = '''Exit the debugger.
 
+    exit()
+
     This will close all active network connections.'''
 
     help.__help__ = '''Show online help.
 
-    Help is available for all commands, and debugger-provided objects.'''
+    help()
+    help(keyword)
+
+    Help is available for all commands and debugger-provided objects.'''
 
     history.__help__ = '''Show history of previous commands.'''
     
@@ -418,17 +454,8 @@ class CLI:
 
     listen.__help__ = '''Listen for connections and forward to destination.
 
-    Parameters:
-    localPort
-    - TCP or UDP port number.
-    remoteHost
-    - Destination host name or IP address.
-    remotePort
-    - Destination TCP or UDP port number.  Defaults to same
-      as "localPort".
-    protocol
-    - TCP or UDP; defaults to TCP.
-
+    listen(localPort, remoteHost[, remotePort[, protocol]])
+    
     Listen for connections on "localPort", and forward to
     "remoteHost" on "remotePort".  "protocol" defaults to
     "tcp", but can be overridden by specifying "udp".
