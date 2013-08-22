@@ -137,6 +137,71 @@ class EventSource:
     __help__ = """Help for event source."""
 
 
+class Packet:
+    """A network packet."""
+
+    def __init__(self, bytes, connection):
+        self._bytes = bytes
+        self._connection = connection
+        return
+
+    def get_connection(self):
+        """Return reference to the Connection that delivered this Packet."""
+        return self._connection
+
+    def get_payload(self):
+        """Get the content of this packet."""
+        return self._bytes
+
+    def dump(self):
+        """Return a formatted dump of the packet's content."""
+
+        s = ""
+        p = "|"
+        i = 0
+        l = len(self._bytes)
+
+        while i < l:
+            if i % 16 == 0:
+                s += "%04x  " % i
+
+            b = self._bytes[i]
+            s += "%02x " % b
+            p += chr(b) if b >= 32 and b < 127 else "."
+
+            if i % 16 == 15:
+                s += "   %s|\n" % p
+                p = "|"
+            elif i % 8 == 7:
+                s += "  "
+
+            i += 1
+
+        if l % 16 != 0:
+            for i in range(16 - (l % 16)):
+                s += "   "
+                p += " "
+
+            s += "   %s|\n" % p
+
+        return s
+
+    __help__ = """A packet."""
+
+
+class Connection:
+    def __init__(self):
+        self._listener = None
+        self._src = None
+        self._dst = None
+        self._proto = None
+        self._from_c = []
+        self._to_c = []
+
+        
+        return
+
+
 class Event:
     """Debugger event.
 
@@ -213,6 +278,59 @@ class Event:
         return self._context
 
     __help__ = "Help for events."""
+
+
+class ClientReceiveEvent(Event):
+    def __init__(self, source):
+        super().__init__(source, "client_recv")
+        self._packet = None
+        return
+
+    def get_description(self):
+        return "received %u bytes from server" % len(self._packet.get_payload())
+
+    def set_packet(self, packet):
+        """(Re)set the received packet."""
+        self._packet = packet
+        return
+
+    def get_packet(self):
+        """Get the received packet."""
+        return self._packet
+
+class ServerReceiveEvent(Event):
+    def __init__(self, source):
+        super().__init__(source, "server_recv")
+        self._packet = None
+        return
+
+    def get_description(self):
+        return "received %u bytes from client" % len(self._packet.get_payload())
+
+    def set_packet(self, packet):
+        """(Re)set the received packet."""
+        self._packet = packet
+        return
+
+    def get_packet(self):
+        """Get the received packet."""
+        return self._packet
+
+class AcceptEvent(Event):
+    def __init__(self, source):
+        super().__init__(source, "accept")
+        self._connection = None
+        return
+
+    def get_connection(self):
+        """Get the Connection created by this accept event."""
+        return self._connection
+
+
+class CloseEvent(Event):
+    def __init__(self):
+        super().__init__(self, source, "close")
+        return
 
 
 class Dispatcher:

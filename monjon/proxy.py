@@ -64,7 +64,7 @@ class TCPListener(Listener):
         else:
             self.remotePort = remotePort
 
-        # List of sessions accepted from the listener
+        # List of sessions accepted from the listener.
         self._sessions = []
         return
 
@@ -91,10 +91,17 @@ class TCPListener(Listener):
         # action.
         s, a = self.socket.accept()
 
+        # Create Connecction object for this connection.
+        connection = monjon.core.Connection()
+        connection._src = s.getpeername()
+        connection._dst = (self.remoteHost, self.remotePort)
+
         # Create and queue event
-        e = monjon.core.Event(self, "accept")
+        e = monjon.core.AcceptEvent(self)
+        e._connection = connection
         e.set_action(self.do_accept)
         e.set_context((s, a))
+
         self.dispatcher.queue_event(e)
         return
 
@@ -103,12 +110,12 @@ class TCPListener(Listener):
         s, a = event.get_context()
 
         # Create TCP session object.
-        session = TCPSession(self.dispatcher,
+        session = TcpSession(self.dispatcher,
                              s,
                              self.remoteHost,
                              self.remotePort)
 
-        # Save in list of sessions.
+        # Save in list of proxies.
         self._sessions.append(session)
         return
 
@@ -122,7 +129,7 @@ class TCPListener(Listener):
                                                 self.remotePort)
 
 
-class TCPSession(monjon.core.EventSource):
+class TcpSession(monjon.core.EventSource):
     """ """
 
     def __init__(self, dispatcher, sock, remoteHost, remotePort):
@@ -149,15 +156,13 @@ class TCPSession(monjon.core.EventSource):
         return
 
     def send_to_client(self, event):
-        buf = event.get_context()
+        buf = event.get_packet().get_payload()
         self._client.send(buf)
-        print("S->C %u bytes" % len(buf))
         return
 
     def send_to_server(self, event):
-        buf = event.get_context()
+        buf = event.get_packet().get_payload()
         self._server.send(buf)
-        print("C->S %u bytes" % len(buf))
         return
 
     def close(self, event):
@@ -181,22 +186,22 @@ class TCPSession(monjon.core.EventSource):
         if sock == self._client:
             buf = self._client.recv(8192)
             if buf:
-                e = monjon.core.Event(self, "server_recv")
-                e.set_context(buf)
+                e = monjon.core.ServerReceiveEvent(self)
+                e._packet = monjon.core.Packet(buf, None) # FIXME
                 e.set_action(self.send_to_server)
             else:
                 # Zero-length read, so client has closed session
-                e = monjon.core.Event(self, "close")
+                e = monjon.core.CloseEvent(self)
                 e.set_action(self.close)
         else:
             buf = self._server.recv(8192)
             if buf:
-                e = monjon.core.Event(self, "client_recv")
-                e.set_context(buf)
+                e = monjon.core.ClientReceiveEvent(self)
+                e._packet = monjon.core.Packet(buf, None) # FIXME
                 e.set_action(self.send_to_client)
             else:
                 # Zero-length read, so server has closed session
-                e = monjon.core.Event(self, "close")
+                e = monjon.core.CloseEvent(self)
                 e.set_action(self.close)
 
         # Queue event for dispatch
@@ -204,7 +209,7 @@ class TCPSession(monjon.core.EventSource):
         return
 
     def on_writeable(self, sock):
-        #print("TCPSession::on_writeable()")
+        #print("TcpSession::on_writeable()")
         return
 
     def __repr__(self):
