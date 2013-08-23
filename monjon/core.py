@@ -154,35 +154,55 @@ class Packet:
         return self._bytes
 
     def dump(self):
-        """Return a formatted dump of the packet's content."""
+        """Return a formatted dump of the packet's content.
 
+        Print 16 bytes per line, in two groups of 8, showing hex
+        values of each byte.  Follow this by a character-oriented
+        view, with non-printable characters replaced by a dot. """
+
+        # Result string.
         s = ""
+
+        # String-oriented "preview" assembled and appended to each line.
         p = "|"
+
+        # Index into packet's byte array.
         i = 0
+
+        # Length of packet.
         l = len(self._bytes)
 
         while i < l:
             if i % 16 == 0:
-                s += "%04x  " % i
+                # Print offset into packet at start of each line of 16 bytes. 
+                s += "%04x   " % i
 
             b = self._bytes[i]
             s += "%02x " % b
             p += chr(b) if b >= 32 and b < 127 else "."
 
             if i % 16 == 15:
-                s += "   %s|\n" % p
+                # At the end of each row, print the string preview,
+                # and then reset it ready for the next line.
+                s += "  %s|\n" % p
                 p = "|"
+
             elif i % 8 == 7:
+                # Insert an extra gap between the groups of eight bytes.
                 s += "  "
 
             i += 1
 
+        # At the end of the packet, if it's not an exact multiple of
+        # 16 bytes in length, pad out the hex bytes display with
+        # spaces, and then append the string preview aligned with the
+        # other rows.
         if l % 16 != 0:
             for i in range(16 - (l % 16)):
                 s += "   "
                 p += " "
 
-            s += "   %s|\n" % p
+            s += "  %s|\n" % p
 
         return s
 
@@ -298,6 +318,8 @@ class ClientReceiveEvent(Event):
         """Get the received packet."""
         return self._packet
 
+    __help__ = """Help for client receive event."""
+    
 class ServerReceiveEvent(Event):
     def __init__(self, source):
         super().__init__(source, "server_recv")
@@ -316,6 +338,8 @@ class ServerReceiveEvent(Event):
         """Get the received packet."""
         return self._packet
 
+    __help__ = """Help for server receive event."""
+
 class AcceptEvent(Event):
     def __init__(self, source):
         super().__init__(source, "accept")
@@ -326,11 +350,15 @@ class AcceptEvent(Event):
         """Get the Connection created by this accept event."""
         return self._connection
 
+    __help__ = """Help for accept event."""
+
 
 class CloseEvent(Event):
     def __init__(self):
         super().__init__(self, source, "close")
         return
+
+    __help__ = """Help for close event."""
 
 
 class Dispatcher:
