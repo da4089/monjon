@@ -70,21 +70,26 @@ class Constant:
         return self.s
 
 
-# Event constants
-accept = Constant("accept",
-                  "Event triggered when a connection is received on "
-                  "a listening socket.")
-client_recv = Constant("client_recv",
-                       "Event triggered when a packet is received from "
-                       "the initiator of a connection.")
-server_recv = Constant("server_recv",
-                       "Event triggered when a packet is received from "
-                       "the listener of a connection.")
-close = Constant("close", "Event triggered when a connection is closed.")
-
 # Protocol constants
 tcp = Constant("tcp", "Protocol type for listen() command.")
 udp = Constant("udp", "Protocol type for listen() command.")
+
+
+class EventType(Constant):
+    """Derived class of constants for use as event types in breakpoints."""
+    pass
+
+# Event constants
+accept = EventType("accept",
+                   "Event triggered when a connection is received on "
+                   "a listening socket.")
+client_recv = EventType("client_recv",
+                        "Event triggered when a packet is received from "
+                        "the initiator of a connection.")
+server_recv = EventType("server_recv",
+                        "Event triggered when a packet is received from "
+                        "the listener of a connection.")
+close = EventType("close", "Event triggered when a connection is closed.")
 
 
 ########################################################################
@@ -252,6 +257,12 @@ class CLI:
         print("Callback for watchpoint")
 
 
+    def error(self, message):
+        """Display an error message."""
+        print("Error: %s" % message)
+        return
+
+
     ####################################################################
     # Commands
 
@@ -259,20 +270,50 @@ class CLI:
         """CLI command to set a breakpoint."""
 
         if len(args) < 2:
-            raise TypeError("breakpoint() missing required arguments")
-        
-        if isinstance(args[0], monjon.proxy.Listener):
-            # Listener
-            # FIXME: should this be in monjon.core, not monjon.proxy?
-            self.dispatcher.set_breakpoint(args[0], args[1], "True")
+            self.error("breakpoint() missing required arguments")
+            return
 
-        elif isinstance(args[0], monjon.core.EventSource):
-            # Session of some sort
-            self.dispatcher.set_breakpoint(args[0], args[1], "True")
+        elif len(args) == 2:
+            # Generic form: breakpoint(event, condition)
 
+            if not isinstance(args[0], EventType):
+                self.error("Second parameter must be event type.")
+                return
+
+            if not isinstance(args[1], type("")):
+                self.error("Third parameter must be string-form "
+                           "conditional expression.")
+                return
+    
+            self.dispatcher.set_breakpoint(None, args[0], args[1])
+
+        elif len(args) == 3:
+            # Specific source form: breakpoint(source, event, condition)
+
+            if not isinstance(args[1], EventType):
+                self.error("Second parameter must be event type.")
+                return
+
+            if not isinstance(args[2], type("")):
+                self.error("Third parameter must be string-form "
+                           "conditional expression.")
+                return
+    
+            if isinstance(args[0], monjon.proxy.Listener):
+                # Listener
+                # FIXME: should this be in monjon.core, not monjon.proxy?
+                self.dispatcher.set_breakpoint(args[0], args[1], args[2])
+
+            elif isinstance(args[0], monjon.core.EventSource):
+                # Session of some sort
+                self.dispatcher.set_breakpoint(args[0], args[1], args[2])
+
+            else:
+                self.error("Unknown event source (first parameter)")
+                return
         else:
-            print("Can't handle generic breakpoints yet")
-
+            self.error("breakpoint() accepts only 2 or 3 parameters.")
+            
         return
 
     def exit(self):
