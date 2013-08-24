@@ -239,10 +239,16 @@ class CLI:
         else:
             cond = "if %s" % breakpoint.get_condition()
 
-        print("b[%u] => %s on s[%u] %s" % (breakpoint.get_name(),
-                                           breakpoint.get_event(),
-                                           breakpoint.get_source().get_name(),
-                                           cond))
+        src = breakpoint.get_source()
+        if src:
+            print("b[%u] => %s on s[%u], %s" % (breakpoint.get_name(),
+                                                breakpoint.get_event(),
+                                                src.get_name(),
+                                                cond))
+        else:
+            print("b[%u] => %s, %s" % (breakpoint.get_name(),
+                                       breakpoint.get_event(),
+                                       cond))
         return
 
     def on_clear_breakpoint(self, breakpoint):
@@ -277,11 +283,11 @@ class CLI:
             # Generic form: breakpoint(event, condition)
 
             if not isinstance(args[0], EventType):
-                self.error("Second parameter must be event type.")
+                self.error("First parameter must be event type.")
                 return
 
             if not isinstance(args[1], type("")):
-                self.error("Third parameter must be string-form "
+                self.error("Second parameter must be string-form "
                            "conditional expression.")
                 return
     
