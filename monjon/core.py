@@ -539,6 +539,11 @@ class Dispatcher:
                 if True: # FIXME: evaluate conditional
                     self.do_break(self._breakpoints[source][eventType], event)
 
+        elif None in self._breakpoints.keys():
+            if eventType in self._breakpoints[None].keys():
+                if True:  # FIXME: evaluate conditional
+                    self.do_break(self._breakpoints[None][eventType], event)
+
         event.perform_action()
         return
 
