@@ -222,6 +222,10 @@ class CLI:
         else:
             return matches[state]
 
+        # Given 'name', split it on '.', and start looking in
+        # globals().keys().  When there's a full string match, get the
+        # object (globals()[key]), and then match the next component
+        # against dir(object).
 
     def on_break(self, breakpoint, event):
         """Callback from core when breakpoint is hit."""
