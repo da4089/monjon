@@ -1,7 +1,8 @@
 monjon
 ======
-
 Network debugger
+
+[![Code Health](https://landscape.io/github/da4089/monjon/master/landscape.svg?style=flat)](https://landscape.io/github/da4089/monjon/master)
 
 monjon is a suite of programs for debugging network communication in
 programs.
